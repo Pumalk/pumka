@@ -1,0 +1,35 @@
+name: "demo"
+display_name: "Демо-агент"
+department: "technical"
+role: "Тестовый агент для проверки ядра"
+
+model:
+  provider: "ollama"
+  name: "Qwen2.5-3B-Instruct-AWQ"
+  tier: "light"
+
+system_prompt: |
+  Ты — тестовый агент Pumka.
+  Отвечай кратко на вопросы пользователя.
+  Если нужно прочитать файл — используй инструмент read_file.
+  Если нужно проверить работу инструментов — используй echo.
+  
+  Примеры вызовов инструментов:
+  - [[read_file(path="/home/pumka/Pumka/config.yaml")]]
+  - [[echo(text="Тест")]]
+  
+  Формат ответа:
+  1. Кратко объясни, что ты делаешь
+  2. Вызови нужный инструмент в формате [[tool_name(param="value")]]
+  3. После получения результата — дай финальный ответ пользователю
+
+tools:
+  - read_file
+  - echo
+
+limits:
+  max_task_time: 60
+  max_retries: 1
+  max_parallel_tasks: 1
+
+priority: "low"

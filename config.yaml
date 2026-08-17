@@ -1,0 +1,44 @@
+# Pumka — главный конфиг (создан мастером Этапа 0).
+# Проект личный. Любые модели и пути меняются ЗДЕСЬ, без правки кода.
+
+paths:
+  project: "/home/pumka/Pumka"
+  vault_path: "/home/pumka/obsidian_vault"
+  projects: "/home/pumka/Pumka/projects"
+
+llm:
+  provider: "ollama"
+  ollama_url: "http://192.168.0.63:11434"
+  default_profile: "power"
+  profiles:
+    power:
+      light: "Qwen3-4B-Instruct-2507"
+      medium: "DavidAU/Qwen3.5-9B"
+      multimodal: "DavidAU/Qwen3.5-9B"
+      coding: "nightmedia/Qwen3.5-9B-OmniCoder-Claude-Polaris"
+      reasoning: "Jackrong/Qwen3.5-9B-Claude-4.6-Opus-Reasoning"
+      critical: "amd/Llama-3.3-70B-Instruct-w4a16"
+    balanced:
+      light: "Qwen2.5-3B-Instruct-AWQ"
+      medium: "Qwen3-4B-Instruct-2507"
+      multimodal: "gemma-4-E4B-it-W4A16"
+      coding: "Qwen2.5-Coder-3B-Instruct-AWQ"
+      reasoning: "khazarai/Qwen3-4B-Kimi2.5-Reasoning-Distilled"
+      critical: "Qwen3.5-9B"
+    light:
+      light: "Qwen2.5-1.5B-Instruct"
+      medium: "Qwen2.5-3B-Instruct-AWQ"
+      multimodal: "Qwen2.5-VL-3B-Instruct-AWQ"
+      coding: "Qwen2.5-Coder-1.5B-Instruct"
+      reasoning: "khazarai/Qwen3-4B-Kimi2.5-Reasoning-Distilled"
+      critical: "Qwen3-4B-Instruct-2507"
+  embedding: "ibm-granite/granite-embedding-311m-multilingual"
+  embedding_fallback: "taide/embeddinggemma-GTAIDE-300m-2605"
+
+security:
+  allowed_paths:
+    - "/home/pumka/Pumka"
+    - "/home/pumka/obsidian_vault"
+    - "/home/pumka/Pumka/projects"
+
+max_queue_size: 200

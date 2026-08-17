@@ -1,0 +1,38 @@
+# Python
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Секреты (никогда не коммитить)
+.env
+*.pem
+*.key
+
+# Данные (слишком большие или временные)
+data/logs/
+data/temp/
+data/trash/
+data/memory/
+backups/
+
+# IDE и редакторы
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Проекты и песочницы (слишком большие)
+projects/
+sandbox_dev/
+sandbox_tech/
