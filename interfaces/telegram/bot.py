@@ -4,6 +4,11 @@ interfaces/telegram/bot.py — точка входа для Telegram-бота.
 и выбирает самый быстрый. При падении прокси — повторная проверка.
 Сохраняет упавшие прокси в файл, чтобы не проверять их снова.
 Опционально использует DNS-over-HTTPS (DoH) для загрузки списка.
+
+Подэтап 2.1:
+- добавлена in-memory память диалога chat_memory;
+- память живёт только до перезапуска бота;
+- reload handlers модуля при падении прокси для решения Router is already attached.
 """
 
 import sys
@@ -11,8 +16,9 @@ import socket
 import logging
 import asyncio
 import time
+import importlib
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import aiohttp
 from aiohttp.abc import AbstractResolver
@@ -24,9 +30,6 @@ from core.config import load_config
 from core.logging_setup import setup_logging
 from core.tools import create_tool_registry
 
-from interfaces.telegram.handlers import router, AccessMiddleware
-
-
 logger = logging.getLogger("pumka.system")
 
 # Максимум одновременных проверок прокси
@@ -36,21 +39,42 @@ MAX_CONCURRENT_CHECKS = 50
 MAX_PROXIES_TOTAL = 500
 
 # Таймаут проверки одного прокси (секунды)
-PROXY_CHECK_TIMEOUT = 5
+PROXY_CHECK_TIMEOUT = 10
 
 # Пауза перед повторной проверкой после падения (секунды)
 RETRY_DELAY_SECONDS = 5
 
 # Путь к файлу для хранения упавших прокси
-FAILED_PROXIES_FILE = Path(__file__).parent.parent.parent / "data" / "temp" / "failed_proxies.txt"
+FAILED_PROXIES_FILE = (
+    Path(__file__).parent.parent.parent / "data" / "temp" / "failed_proxies.txt"
+)
 
 # Множество для отслеживания упавших прокси (исключаем их из повторных проверок)
 failed_proxies: set = set()
+
+# ============================================================================
+# Память диалога (Подэтап 2.1)
+# ============================================================================
+# Структура:
+# {
+#     user_id: [
+#         {"role": "user", "text": "..."},
+#         {"role": "bot", "text": "..."},
+#         ...
+#     ]
+# }
+#
+# Важно:
+# - память живёт только в оперативной памяти;
+# - при перезапуске бота память теряется;
+# - полноценная долгосрочная память будет позже, на Этапе 5.
+chat_memory: Dict[int, list] = {}
 
 
 # ============================================================================
 # DNS-over-HTTPS (DoH) — защита от подмены DNS при загрузке списка прокси
 # ============================================================================
+
 
 class DohResolver(AbstractResolver):
     """
@@ -74,38 +98,46 @@ class DohResolver(AbstractResolver):
                 ) as response:
                     if response.status != 200:
                         return None
+
                     data = await response.json()
+
                     for answer in data.get("Answer", []):
                         if answer.get("type") == 1:  # A-запись
                             return answer.get("data")
         except Exception as e:
             logger.debug(f"DoH не смог разрешить {host}: {e}")
-        return None
+            return None
 
     async def _getaddrinfo(self, host: str, port: int) -> List[dict]:
         """Стандартное разрешение имени в структуру, понятную aiohttp."""
         loop = asyncio.get_event_loop()
         infos = await loop.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+
         result = []
         for family, type_, proto, _canon, sockaddr in infos:
-            result.append({
-                "family": family,
-                "type": type_,
-                "proto": proto,
-                "flags": socket.AI_NUMERICHOST,
-                "host": sockaddr[0],
-                "port": sockaddr[1],
-                "hostname": host,
-            })
+            result.append(
+                {
+                    "family": family,
+                    "type": type_,
+                    "proto": proto,
+                    "flags": socket.AI_NUMERICHOST,
+                    "host": sockaddr[0],
+                    "port": sockaddr[1],
+                    "hostname": host,
+                }
+            )
+
         return result
 
     async def resolve(self, host: str, port: int = 0, family: int = 0) -> List[dict]:
         """Разрешает домен: сначала DoH, при неудаче — системный DNS."""
         port = port or 443
+
         ip = await self._resolve_via_doh(host)
         if ip:
             logger.debug(f"DoH: {host} -> {ip}")
             return await self._getaddrinfo(ip, port)
+
         return await self._getaddrinfo(host, port)
 
     async def close(self) -> None:
@@ -117,13 +149,17 @@ class DohResolver(AbstractResolver):
 # Работа со списком прокси
 # ============================================================================
 
+
 def normalize_proxy(proxy: str) -> str:
     """Добавляет префикс socks5://, если его нет."""
     proxy = proxy.strip()
+
     if not proxy:
         return ""
+
     if not proxy.startswith(("http://", "https://", "socks5://", "socks4://")):
         proxy = f"socks5://{proxy}"
+
     return proxy
 
 
@@ -137,28 +173,29 @@ async def load_proxies_from_api(
     Если use_doh=True — домен API разрешается через DoH.
     """
     logger.info(f"Загрузка списка прокси из API: {api_url}")
-    if use_doh and doh_url:
-        logger.info(f"Используется DoH: {doh_url}")
 
     connector = None
     if use_doh and doh_url:
+        logger.info(f"Используется DoH: {doh_url}")
         connector = aiohttp.TCPConnector(resolver=DohResolver(doh_url))
 
     try:
         async with aiohttp.ClientSession(connector=connector) as session:
             async with session.get(
-                api_url,
-                timeout=aiohttp.ClientTimeout(total=15)
+                api_url, timeout=aiohttp.ClientTimeout(total=15)
             ) as response:
                 if response.status != 200:
                     logger.error(f"API вернул статус {response.status}")
                     return []
+
                 text = await response.text()
+
                 proxies = [
                     line.strip()
                     for line in text.strip().split("\n")
                     if line.strip() and ":" in line
                 ]
+
                 logger.info(f"Загружено {len(proxies)} прокси из API")
                 return proxies
     except Exception as e:
@@ -177,17 +214,20 @@ async def check_proxy_with_latency(
     """
     async with semaphore:
         start = time.monotonic()
+
         try:
             if proxy_url.startswith(("socks5://", "socks4://")):
                 try:
                     from aiohttp_socks import ProxyConnector
+
                     connector = ProxyConnector.from_url(proxy_url)
                 except ImportError:
                     return None
+
                 async with aiohttp.ClientSession(connector=connector) as session:
                     async with session.get(
                         "https://api.telegram.org",
-                        timeout=aiohttp.ClientTimeout(total=timeout)
+                        timeout=aiohttp.ClientTimeout(total=timeout),
                     ) as response:
                         ok = response.status == 200
             else:
@@ -195,16 +235,19 @@ async def check_proxy_with_latency(
                     async with session.get(
                         "https://api.telegram.org",
                         proxy=proxy_url,
-                        timeout=aiohttp.ClientTimeout(total=timeout)
+                        timeout=aiohttp.ClientTimeout(total=timeout),
                     ) as response:
                         ok = response.status == 200
         except Exception:
             ok = False
+
         latency = time.monotonic() - start
         return (proxy_url, latency) if ok else None
 
 
-async def scan_all_proxies(proxies: List[str], select_best: bool = True) -> List[Tuple[str, float]]:
+async def scan_all_proxies(
+    proxies: List[str], select_best: bool = True
+) -> List[Tuple[str, float]]:
     """
     Проверяет ВСЕ прокси параллельно (до 50 одновременно).
     Возвращает рабочие прокси с замеренной задержкой.
@@ -214,18 +257,20 @@ async def scan_all_proxies(proxies: List[str], select_best: bool = True) -> List
     # Загружаем упавшие прокси из файла
     if FAILED_PROXIES_FILE.exists():
         try:
-            with open(FAILED_PROXIES_FILE, 'r') as f:
+            with open(FAILED_PROXIES_FILE, "r") as f:
                 failed_from_file = set(line.strip() for line in f if line.strip())
-                failed_proxies.update(failed_from_file)
+            failed_proxies.update(failed_from_file)
         except Exception as e:
             logger.warning(f"Не удалось загрузить список упавших прокси: {e}")
 
     # Исключаем прокси, которые уже падали
     proxies = [p for p in proxies if normalize_proxy(p) not in failed_proxies]
     proxies = proxies[:MAX_PROXIES_TOTAL]
+
     normalized = [normalize_proxy(p) for p in proxies]
 
     print(f"🔍 Проверка {len(normalized)} прокси параллельно...")
+
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_CHECKS)
 
     results = await asyncio.gather(
@@ -233,20 +278,24 @@ async def scan_all_proxies(proxies: List[str], select_best: bool = True) -> List
     )
 
     working = [r for r in results if r is not None]
+
     if select_best:
         working.sort(key=lambda item: item[1])
 
     print(f"✅ Рабочих прокси: {len(working)} из {len(normalized)}")
+
     for proxy, latency in working[:5]:
         print(f"   ⚡ {proxy} — {latency * 1000:.0f} мс")
 
     logger.info(f"Сканирование прокси: {len(working)} рабочих из {len(normalized)}")
+
     return working
 
 
 # ============================================================================
 # Создание и запуск бота
 # ============================================================================
+
 
 def create_bot_with_proxy(token: str, proxy: str = "") -> Bot:
     """Создаёт бота с поддержкой прокси (HTTP или SOCKS5)."""
@@ -261,26 +310,34 @@ def create_bot_with_proxy(token: str, proxy: str = "") -> Bot:
                 print("        Установите: pip install aiohttp_socks")
                 sys.exit(1)
 
+        # Используем дефолтный таймаут aiogram (не задаём свой)
         session = AiohttpSession(proxy=proxy)
         logger.info(f"Бот создан с прокси: {proxy}")
+
         return Bot(
             token=token,
             session=session,
-            default=DefaultBotProperties(parse_mode=ParseMode.HTML)
+            default=DefaultBotProperties(parse_mode=ParseMode.HTML),
         )
 
     logger.info("Бот создан без прокси")
-    return Bot(
-        token=token,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML)
-    )
+
+    return Bot(token=token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 
 
 async def run_bot_with_proxy(token: str, proxy: str, config, tool_registry) -> None:
     """Запускает бота с указанным прокси."""
     bot = create_bot_with_proxy(token=token, proxy=proxy)
-
     dp = Dispatcher()
+
+    # Перезагружаем handlers модуль, чтобы создать новый router объект
+    # Это решает проблему "Router is already attached" при повторном запуске
+    import interfaces.telegram.handlers as handlers_module
+
+    importlib.reload(handlers_module)
+
+    router = handlers_module.router
+    AccessMiddleware = handlers_module.AccessMiddleware
 
     access_middleware = AccessMiddleware()
     dp.message.outer_middleware(access_middleware)
@@ -290,6 +347,7 @@ async def run_bot_with_proxy(token: str, proxy: str, config, tool_registry) -> N
 
     dp["config"] = config
     dp["tool_registry"] = tool_registry
+    dp["chat_memory"] = chat_memory
 
     logger.info(f"Бот готов к работе с прокси: {proxy}")
     print("✅ Бот готов к работе. Ожидание сообщений...")
@@ -303,6 +361,7 @@ async def run_bot_with_proxy(token: str, proxy: str, config, tool_registry) -> N
 # ============================================================================
 # Главная функция
 # ============================================================================
+
 
 async def main():
     """Главная функция запуска бота."""
@@ -324,7 +383,9 @@ async def main():
     logger.info(f"Разрешённый пользователь: {config.telegram.allowed_user_id}")
 
     tool_registry = create_tool_registry(config.security.allowed_paths)
-    logger.info(f"Реестр инструментов создан: {len(tool_registry.list_tools())} инструментов")
+    logger.info(
+        f"Реестр инструментов создан: {len(tool_registry.list_tools())} инструментов"
+    )
 
     # --------------------------------------------------------------
     # Режим автоподбора прокси: проверка ВСЕХ и выбор самого быстрого
@@ -338,11 +399,15 @@ async def main():
             use_doh=config.telegram.proxy_use_doh,
             doh_url=config.telegram.proxy_doh_url,
         )
+
         if not proxies:
             print("[ОШИБКА] Не удалось загрузить список прокси из API")
             sys.exit(1)
 
-        working = await scan_all_proxies(proxies, select_best=config.telegram.proxy_select_best)
+        working = await scan_all_proxies(
+            proxies, select_best=config.telegram.proxy_select_best
+        )
+
         if not working:
             print("[ОШИБКА] Не найдено рабочих прокси")
             sys.exit(1)
@@ -350,6 +415,7 @@ async def main():
         # Основной цикл: при падении прокси — повторная проверка всех
         while working:
             proxy, latency = working.pop(0)
+
             print(f"🚀 Запуск бота с прокси {proxy} ({latency * 1000:.0f} мс)")
 
             try:
@@ -360,12 +426,13 @@ async def main():
                     tool_registry=tool_registry,
                 )
                 break  # polling завершился штатно (Ctrl+C)
-
             except Exception as e:
                 # Невалидный токен — повторные проверки бесполезны
                 if "unauthorized" in str(e).lower():
                     logger.error(f"Невалидный токен бота: {e}")
-                    print("[ОШИБКА] Telegram не принял токен. Проверьте TELEGRAM_BOT_TOKEN.")
+                    print(
+                        "[ОШИБКА] Telegram не принял токен. Проверьте TELEGRAM_BOT_TOKEN."
+                    )
                     sys.exit(1)
 
                 # Помечаем прокси как упавший, чтобы не пробовать его снова
@@ -374,13 +441,16 @@ async def main():
                 # Сохраняем в файл
                 try:
                     FAILED_PROXIES_FILE.parent.mkdir(parents=True, exist_ok=True)
-                    with open(FAILED_PROXIES_FILE, 'a') as f:
+                    with open(FAILED_PROXIES_FILE, "a") as f:
                         f.write(f"{proxy}\n")
                 except Exception as e:
                     logger.warning(f"Не удалось сохранить упавший прокси в файл: {e}")
 
                 logger.error(f"Ошибка с прокси {proxy}: {e}")
-                print(f"❌ Прокси {proxy} упал. Помечен как нестабильный. Повторное тестирование...")
+                print(
+                    f"❌ Прокси {proxy} упал. Помечен как нестабильный. Повторное тестирование..."
+                )
+
                 await asyncio.sleep(RETRY_DELAY_SECONDS)
 
                 proxies = await load_proxies_from_api(
@@ -388,16 +458,19 @@ async def main():
                     use_doh=config.telegram.proxy_use_doh,
                     doh_url=config.telegram.proxy_doh_url,
                 )
+
                 if not proxies:
                     print("[ОШИБКА] Не удалось перезагрузить список прокси")
                     sys.exit(1)
 
                 working = await scan_all_proxies(
-                    proxies,
-                    select_best=config.telegram.proxy_select_best
+                    proxies, select_best=config.telegram.proxy_select_best
                 )
+
                 if not working:
-                    print("[ОШИБКА] После повторной проверки рабочих прокси нет. Бот остановлен.")
+                    print(
+                        "[ОШИБКА] После повторной проверки рабочих прокси нет. Бот остановлен."
+                    )
                     sys.exit(1)
 
     # --------------------------------------------------------------
@@ -406,6 +479,7 @@ async def main():
     elif config.telegram.proxy:
         proxy = normalize_proxy(config.telegram.proxy)
         print(f"🔗 Прокси из .env: {proxy}")
+
         try:
             await run_bot_with_proxy(
                 token=config.telegram.token,
@@ -423,6 +497,7 @@ async def main():
     # --------------------------------------------------------------
     else:
         print("🔗 Прокси не задан")
+
         try:
             await run_bot_with_proxy(
                 token=config.telegram.token,

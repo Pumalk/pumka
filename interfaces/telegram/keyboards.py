@@ -10,17 +10,17 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
     """
     Создаёт reply-клавиатуру главного меню.
     Кнопки отображаются под полем ввода.
-    
+
     Returns:
         ReplyKeyboardMarkup с 4 кнопками
     """
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="💬 Чат")],
+            [KeyboardButton(text="🆕 Новый чат")],
             [KeyboardButton(text="📦 Очередь")],
             [KeyboardButton(text="🏥 Здоровье")],
-            [KeyboardButton(text="ℹ️ Помощь")]
+            [KeyboardButton(text="ℹ️ Помощь")],
         ],
         resize_keyboard=True,
-        is_persistent=True  # клавиатура сохраняется между перезапусками
+        is_persistent=True,  # клавиатура сохраняется между перезапусками
     )
