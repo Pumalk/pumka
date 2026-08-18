@@ -20,8 +20,10 @@ from pydantic import BaseModel, Field, field_validator, ValidationError
 # Pydantic-модели для валидации config.yaml
 # ============================================================================
 
+
 class LLMProfile(BaseModel):
     """Профиль LLM с 6 уровнями (tiers)."""
+
     light: str
     medium: str
     multimodal: str
@@ -32,6 +34,7 @@ class LLMProfile(BaseModel):
 
 class LLMConfig(BaseModel):
     """Конфигурация LLM-провайдеров."""
+
     provider: Literal["ollama", "openrouter", "routerai"] = "ollama"
     ollama_url: str = "http://localhost:11434"
     default_profile: Literal["power", "balanced", "light"] = "balanced"
@@ -42,6 +45,7 @@ class LLMConfig(BaseModel):
 
 class PathsConfig(BaseModel):
     """Пути к важным папкам проекта."""
+
     data: str = "data"
     logs: str = "data/logs"
     memory: str = "data/memory"
@@ -55,35 +59,49 @@ class PathsConfig(BaseModel):
 
 class SecurityConfig(BaseModel):
     """Настройки безопасности."""
-    allowed_paths: list[str] = Field(default_factory=lambda: [
-        "/home/pumka/Pumka/data",
-        "/home/pumka/Pumka/projects",
-        "/home/pumka/Pumka/sandbox_tech",
-        "/home/pumka/Pumka/sandbox_dev",
-    ])
+
+    allowed_paths: list[str] = Field(
+        default_factory=lambda: [
+            "/home/pumka/Pumka/data",
+            "/home/pumka/Pumka/projects",
+            "/home/pumka/Pumka/sandbox_tech",
+            "/home/pumka/Pumka/sandbox_dev",
+        ]
+    )
     max_file_size_mb: int = 10
 
 
 class TelegramConfig(BaseModel):
     """Настройки Telegram-бота."""
+
     token: str = ""
     group_id: str = ""
+    allowed_user_id: Optional[int] = None
+    proxy: str = ""
+    proxy_auto: bool = False
+    proxy_api_url: str = "https://api.proxyscrape.com/v2/?request=getproxies&protocol=socks5&timeout=10000&country=all&ssl=all&anonymity=all"
+    proxy_use_doh: bool = True
+    proxy_doh_url: str = "https://cloudflare-dns.com/dns-query"
+    proxy_select_best: bool = True
 
 
 class GUIConfig(BaseModel):
     """Настройки GUI."""
+
     password: str = ""
     device_token_key: str = ""
 
 
 class AgentsConfig(BaseModel):
     """Настройки агентов."""
+
     max_parallel_tasks: int = 3
     task_timeout_seconds: int = 300
 
 
 class ConfigData(BaseModel):
     """Полная структура config.yaml."""
+
     llm: LLMConfig
     paths: PathsConfig = Field(default_factory=PathsConfig)
     security: SecurityConfig = Field(default_factory=SecurityConfig)
@@ -96,12 +114,13 @@ class ConfigData(BaseModel):
 # Объект Config (результат загрузки)
 # ============================================================================
 
+
 class Config:
     """
     Удобный объект конфигурации.
     Атрибуты: paths, llm, security, telegram, gui, agents, project_root
     """
-    
+
     def __init__(
         self,
         project_root: Path,
@@ -119,14 +138,14 @@ class Config:
         self.telegram = telegram
         self.gui = gui
         self.agents = agents
-        
+
         # Абсолютные пути для удобстваства
         self.data_dir = project_root / paths.data
         self.logs_dir = project_root / paths.logs
         self.memory_dir = project_root / paths.memory
         self.temp_dir = project_root / paths.temp
         self.trash_dir = project_root / paths.trash
-    
+
     def __repr__(self) -> str:
         return (
             f"Config(provider={self.llm.provider!r}, "
@@ -139,13 +158,14 @@ class Config:
 # Функции загрузки
 # ============================================================================
 
+
 def _find_project_root() -> Path:
     """
     Ищет корень проекта по наличию config.yaml.
     Поднимается вверх от текущей директории, пока не найдёт.
     """
     current = Path.cwd().resolve()
-    
+
     # Поднимаемся максимум на 5 уровней вверх
     for _ in range(5):
         if (current / "config.yaml").exists():
@@ -154,7 +174,7 @@ def _find_project_root() -> Path:
         if parent == current:  # дошли до корня файловой системы
             break
         current = parent
-    
+
     # Если не нашли — используем текущую директорию
     # (config.yaml может быть не создан, это ошибка, но обработаем позже)
     return Path.cwd().resolve()
@@ -166,25 +186,25 @@ def _load_env_file(env_path: Path) -> Dict[str, str]:
     Возвращает словарь значений. Пустые значения возвращаются как пустые строки.
     """
     env_vars: Dict[str, str] = {}
-    
+
     if not env_path.exists():
         print(f"[ПРЕДУПРЕЖДЕНИЕ] Файл .env не найден в {env_path.parent}")
         return env_vars
-    
+
     # python-dotenv может читать напрямую
-    with open(env_path, 'r', encoding='utf-8') as f:
+    with open(env_path, "r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
-            if not line or line.startswith('#'):
+            if not line or line.startswith("#"):
                 continue
-            if '=' in line:
-                key, _, value = line.partition('=')
+            if "=" in line:
+                key, _, value = line.partition("=")
                 key = key.strip()
                 value = value.strip().strip('"').strip("'")
                 env_vars[key] = value
                 # Также устанавливаем в os.environ для совместимости
                 os.environ[key] = value
-    
+
     return env_vars
 
 
@@ -194,17 +214,17 @@ def _load_yaml_config(yaml_path: Path) -> Dict[str, Any]:
         print(f"[ОШИБКА] Файл конфигурации не найден: {yaml_path}")
         print("        Запустите setup.py для создания config.yaml")
         sys.exit(1)
-    
+
     try:
-        with open(yaml_path, 'r', encoding='utf-8') as f:
+        with open(yaml_path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
-        
+
         if data is None:
             print(f"[ОШИБКА] Файл {yaml_path} пустой или содержит некорректный YAML")
             sys.exit(1)
-        
+
         return data
-    
+
     except yaml.YAMLError as e:
         print(f"[ОШИБКА] Некорректный YAML в {yaml_path}")
         print(f"        {e}")
@@ -216,65 +236,93 @@ def _load_yaml_config(yaml_path: Path) -> Dict[str, Any]:
 
 
 def _merge_env_to_config(
-    config_data: Dict[str, Any],
-    env_vars: Dict[str, str]
+    config_data: Dict[str, Any], env_vars: Dict[str, str]
 ) -> Dict[str, Any]:
     """
     Объединяет переменные из .env с конфигурацией.
     Значения из .env имеют приоритет над значениями из config.yaml
     для секций telegram и gui.
     """
-    
+
     # Telegram
     if "telegram" not in config_data:
         config_data["telegram"] = {}
-    
     if "TELEGRAM_BOT_TOKEN" in env_vars:
         config_data["telegram"]["token"] = env_vars["TELEGRAM_BOT_TOKEN"]
     if "TELEGRAM_GROUP_ID" in env_vars:
         config_data["telegram"]["group_id"] = env_vars["TELEGRAM_GROUP_ID"]
-    
+    if "TELEGRAM_ALLOWED_USER_ID" in env_vars and env_vars["TELEGRAM_ALLOWED_USER_ID"]:
+        try:
+            config_data["telegram"]["allowed_user_id"] = int(
+                env_vars["TELEGRAM_ALLOWED_USER_ID"]
+            )
+        except ValueError:
+            print("[ОШИБКА] TELEGRAM_ALLOWED_USER_ID должен быть числом")
+            sys.exit(1)
+        if "TELEGRAM_PROXY" in env_vars:
+            config_data["telegram"]["proxy"] = env_vars["TELEGRAM_PROXY"]
+        if "TELEGRAM_PROXY_AUTO" in env_vars:
+            config_data["telegram"]["proxy_auto"] = env_vars[
+                "TELEGRAM_PROXY_AUTO"
+            ].lower() in ("true", "1", "yes", "да")
+        if "TELEGRAM_PROXY_API_URL" in env_vars:
+            config_data["telegram"]["proxy_api_url"] = env_vars[
+                "TELEGRAM_PROXY_API_URL"
+            ]
+        if "TELEGRAM_PROXY_USE_DOH" in env_vars:
+            config_data["telegram"]["proxy_use_doh"] = env_vars[
+                "TELEGRAM_PROXY_USE_DOH"
+            ].lower() in ("true", "1", "yes", "да")
+        if "TELEGRAM_PROXY_DOH_URL" in env_vars:
+            config_data["telegram"]["proxy_doh_url"] = env_vars[
+                "TELEGRAM_PROXY_DOH_URL"
+            ]
+        if "TELEGRAM_PROXY_SELECT_BEST" in env_vars:
+            config_data["telegram"]["proxy_select_best"] = env_vars[
+                "TELEGRAM_PROXY_SELECT_BEST"
+            ].lower() in ("true", "1", "yes", "да")
+
     # GUI
     if "gui" not in config_data:
         config_data["gui"] = {}
-    
+
     if "GUI_PASSWORD" in env_vars:
         config_data["gui"]["password"] = env_vars["GUI_PASSWORD"]
     if "DEVICE_TOKEN_KEY" in env_vars:
         config_data["gui"]["device_token_key"] = env_vars["DEVICE_TOKEN_KEY"]
-    
+
     return config_data
 
 
 def load_config(project_root: Optional[Path] = None) -> Config:
     """
     Главная точка входа. Загружает всю конфигурацию и возвращает объект Config.
-    
+
     Args:
         project_root: Путь к корню проекта. Если None — ищется автоматически.
-    
+
     Returns:
         Объект Config с валидированными данными.
-    
+
     Raises:
         SystemExit: При критических ошибках конфигурации.
     """
-    
+
     # 1. Определяем корень проекта
     if project_root is None:
         project_root = _find_project_root()
-    
+
     # 2. Загружаем .env
     env_path = project_root / ".env"
     env_vars = _load_env_file(env_path)
-    
+
     # 3. Загружаем config.yaml
     yaml_path = project_root / "config.yaml"
     config_data = _load_yaml_config(yaml_path)
-    
+
     # 4. Объединяем .env с YAML (env имеет приоритет для секретов)
     config_data = _merge_env_to_config(config_data, env_vars)
-    
+
     # 5. Валидируем через Pydantic
     try:
         validated = ConfigData(**config_data)
@@ -293,7 +341,7 @@ def load_config(project_root: Optional[Path] = None) -> Config:
         print(f"[ОШИБКА] Неожиданная ошибка при валидации конфигурации:")
         print(f"        {e}")
         sys.exit(1)
-    
+
     # 6. Создаём и возвращаем объект Config
     config = Config(
         project_root=project_root,
@@ -304,7 +352,7 @@ def load_config(project_root: Optional[Path] = None) -> Config:
         gui=validated.gui,
         agents=validated.agents,
     )
-    
+
     return config
 
 
@@ -315,9 +363,9 @@ def load_config(project_root: Optional[Path] = None) -> Config:
 if __name__ == "__main__":
     print("Загрузка конфигурации Pumka...")
     print()
-    
+
     config = load_config()
-    
+
     print(f"✅ Конфигурация загружена успешно")
     print(f"   Корень проекта: {config.project_root}")
     print(f"   Провайдер LLM: {config.llm.provider}")
@@ -326,7 +374,7 @@ if __name__ == "__main__":
     print(f"   Папка логов: {config.logs_dir}")
     print(f"   Telegram токен: {'задан' if config.telegram.token else 'НЕ задан'}")
     print()
-    
+
     # Показываем профиль
     profile_name = config.llm.default_profile
     profile = config.llm.profiles[profile_name]
