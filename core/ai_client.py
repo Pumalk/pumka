@@ -102,6 +102,7 @@ class OllamaClient(BaseAIClient):
             "model": ollama_model,
             "messages": messages,
             "stream": stream,
+            "keep_alive": "24h",  #держать модель в памяти 24 часа
             "options": {
                 "temperature": temperature,
                 "num_predict": max_tokens,
