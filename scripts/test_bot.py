@@ -70,11 +70,11 @@ def test_keyboard_creation():
 
 
 def test_handlers_registration():
-    """Проверяет регистрацию обработчиков."""
+    """Проверяет регистрацию обработчиков через фабрику create_router()."""
     print("\nТест 4: Регистрация обработчиков...")
     try:
         from aiogram import Dispatcher
-        from interfaces.telegram.handlers import router
+        from interfaces.telegram.handlers import create_router
         from core.config import load_config
         from core.tools import create_tool_registry
         
@@ -82,7 +82,7 @@ def test_handlers_registration():
         tool_registry = create_tool_registry(config.security.allowed_paths)
         
         dp = Dispatcher()
-        dp.include_router(router)
+        dp.include_router(create_router())
         
         # Передаём данные через workflow data Dispatcher'а
         dp["config"] = config
@@ -129,7 +129,7 @@ def test_proxy_functions():
     """Проверяет функции нормализации прокси."""
     print("\nТест 6: Функции нормализации прокси...")
     try:
-        from interfaces.telegram.bot import normalize_proxy
+        from interfaces.telegram.proxy import normalize_proxy
         
         # Тест нормализации
         test_cases = [
