@@ -1,7 +1,10 @@
 pyyaml==6.0.2
 python-dotenv==1.0.1
-pydantic==2.10.6
+pydantic==2.9.2
 httpx==0.28.1
 redis==5.2.1
 aiogram==3.13.1
 aiohttp_socks
+fastapi==0.115.2
+uvicorn==0.30.6
+pyjwt==2.9.0
