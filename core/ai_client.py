@@ -132,8 +132,25 @@ class OllamaClient(BaseAIClient):
                 response_data = json.loads(response.read().decode('utf-8'))
             
             # Извлекаем ответ
-            if "message" in response_data and "content" in response_data["message"]:
-                result = response_data["message"]["content"]
+            if "message" in response_data:
+                result = response_data["message"].get("content", "")
+    
+                # Если content пустой, но есть нативные tool_calls — сериализуем их в JSON
+                if (not result or not result.strip()) and "tool_calls" in response_data["message"]:
+                    tool_calls = response_data["message"]["tool_calls"]
+                    logger.info(f"Ollama вернул нативные tool_calls, сериализованы в JSON: {len(tool_calls)} вызовов")
+        
+                    # Преобразуем в формат, который ожидает parse_openai_format
+                    formatted_calls = []
+                    for tc in tool_calls:
+                        func = tc.get("function", {})
+                        formatted_calls.append({
+                            "name": func.get("name"),
+                            "arguments": func.get("arguments", {})
+                        })
+        
+                    result = json.dumps({"tool_calls": formatted_calls}, ensure_ascii=False)
+    
                 logger.info(f"Получен ответ от Ollama: length={len(result)}")
                 return result
             else:

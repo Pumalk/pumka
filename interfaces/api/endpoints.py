@@ -4,7 +4,11 @@ from core.health_check import run_health_check
 from core.agent_loader import load_agent, list_agents
 from core.ai_client import get_client
 from core.tools import create_tool_registry
-from core.function_calling import parse_tool_calls, execute_tool_calls
+from core.function_calling import (
+    run_function_calling_loop,
+    TOOL_LIMIT_WARNING,
+    EMPTY_RESPONSE_WARNING,
+)
 from interfaces.api.auth import (
     check_bruteforce, record_failed_attempt, reset_attempts, 
     create_jwt_token, verify_jwt_token
@@ -39,7 +43,7 @@ def chat(data: dict, _=Depends(verify_jwt_token)):
     message = data.get("message", "")
     if not message:
         raise HTTPException(status_code=400, detail="Поле 'message' обязательно")
-    
+
     try:
         agent = load_agent("demo")
         if not agent:
@@ -52,25 +56,39 @@ def chat(data: dict, _=Depends(verify_jwt_token)):
     config = load_config()
     client = get_client(provider=config.llm.provider, ollama_url=config.llm.ollama_url)
     registry = create_tool_registry(config.security.allowed_paths)
-    
-    # Простой цикл function calling (1 итерация для демо)
+
+    # Цикл function calling (5 итераций)
     try:
-        response_text = client.generate(
+        final_response, iterations, tool_calls_log, hit_limit = run_function_calling_loop(
+            client=client,
+            agent=agent,
             prompt=message,
             system_prompt=agent.system_prompt,
-            tools=registry.get_openai_tools_format(),
-            model=agent.model.name,
-            temperature=0.7
+            tool_registry=registry,
+            temperature=0.7,
+            max_tokens=2048,
+            max_iterations=5
         )
-        
-        # Парсинг и выполнение инструментов, если они есть
-        tool_calls = parse_tool_calls(response_text, agent.model.name)
-        if tool_calls:
-            execute_tool_calls(tool_calls, registry)
-            # Для демо-режима просто возвращаем исходный текст, 
-            # в будущем здесь будет повторный вызов LLM с результатами
-            
-        return {"reply": response_text}
+
+        # Обработка пустого ответа
+        if not final_response:
+            return {
+                "reply": EMPTY_RESPONSE_WARNING,
+                "iterations": iterations,
+                "tool_calls": [tc["name"] for tc in tool_calls_log]
+            }
+
+        # Добавляем предупреждение о лимите итераций
+        if hit_limit:
+            final_response = final_response + "\n\n" + TOOL_LIMIT_WARNING
+
+        # Формируем ответ с аддитивными полями
+        return {
+            "reply": final_response,
+            "iterations": iterations,
+            "tool_calls": [tc["name"] for tc in tool_calls_log]
+        }
+
     except Exception as e:
         logger.error(f"Ошибка в чате: {e}")
         raise HTTPException(status_code=500, detail=f"Ошибка обработки запроса: {str(e)}")

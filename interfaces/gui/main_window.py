@@ -1,11 +1,15 @@
+"""
+interfaces/gui/main_window.py — главное окно приложения.
+"""
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
-                             QListWidget, QStackedWidget, QMessageBox)
+                              QListWidget, QStackedWidget, QMessageBox)
 from PyQt6.QtGui import QAction, QKeySequence
 from PyQt6.QtCore import Qt
 from interfaces.gui.chat_widget import ChatWidget
 from interfaces.gui.settings_widget import SettingsWidget
 from interfaces.gui.about_widget import AboutWidget
 from interfaces.gui.api_client import APIClient
+
 
 # Единая тёмная тема для всего главного окна (QSS)
 DARK_QSS = """
@@ -17,6 +21,7 @@ QListWidget::item:selected { background-color: #0e639c; }
 QListWidget::item:hover { background-color: #2a2d2e; }
 """
 
+
 class MainWindow(QMainWindow):
     def __init__(self, api_client: APIClient):
         super().__init__()
@@ -24,7 +29,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Pumka")
         self.resize(1000, 700)
         self.setStyleSheet(DARK_QSS)
-        
+
         self._setup_hotkeys()
         self._setup_ui()
 
@@ -59,6 +64,7 @@ class MainWindow(QMainWindow):
         """Создаёт боковую панель и область контента."""
         central = QWidget()
         self.setCentralWidget(central)
+
         layout = QHBoxLayout(central)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
@@ -75,26 +81,44 @@ class MainWindow(QMainWindow):
         self.chat_widget = ChatWidget(self.api_client)
         self.settings_widget = SettingsWidget(self.api_client)
         self.about_widget = AboutWidget(self.api_client)
+
         self.stack.addWidget(self.chat_widget)
         self.stack.addWidget(self.settings_widget)
         self.stack.addWidget(self.about_widget)
+
         layout.addWidget(self.stack)
+
+        # Подключаем сигнал режима чтения
+        self.chat_widget.read_mode_toggled.connect(self.toggle_read_mode)
 
         # По умолчанию открываем Чат
         self.sidebar.setCurrentRow(0)
 
     def switch_to(self, index):
         """Переключает на страницу по индексу."""
+        # Автоматически выходим из режима чтения при переключении
+        self.chat_widget.exit_read_mode()
+        self.sidebar.setVisible(True)
         self.sidebar.setCurrentRow(index)
 
     def _on_sidebar_change(self, index):
         """Срабатывает при выборе пункта в боковой панели."""
+        # Автоматически выходим из режима чтения при переключении
+        self.chat_widget.exit_read_mode()
+        self.sidebar.setVisible(True)
         self.stack.setCurrentIndex(index)
+
+    def toggle_read_mode(self, enabled: bool):
+        """
+        Переключает видимость боковой панели в зависимости от режима чтения.
+        Сигнал приходит из ChatWidget.
+        """
+        self.sidebar.setVisible(not enabled)
 
     def show_search_stub(self):
         """Заглушка для поиска (появится на следующих этапах)."""
-        QMessageBox.information(self, "Поиск", 
-            "Функция поиска появится на следующих этапах.")
+        QMessageBox.information(self, "Поиск",
+                                "Функция поиска появится на следующих этапах.")
 
     def refresh_current(self):
         """Обновляет текущую страницу (клавиша F5)."""
