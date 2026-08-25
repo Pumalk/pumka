@@ -20,6 +20,7 @@ data/temp/
 data/trash/
 data/memory/
 backups/
+bot.log
 
 # IDE и редакторы
 .vscode/

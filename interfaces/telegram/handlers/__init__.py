@@ -4,8 +4,7 @@ interfaces/telegram/handlers/__init__.py — фабрика роутера.
 """
 from aiogram import Router
 from interfaces.telegram.reactions import ReactionMiddleware
-from interfaces.telegram.handlers import commands, buttons, text, media
-
+from interfaces.telegram.handlers import commands, buttons, import_content, text, media
 
 def create_router() -> Router:
     """
@@ -15,11 +14,24 @@ def create_router() -> Router:
     "Router is already attached" при перезапуске на новом прокси.
     """
     router = Router()
+    
     # Регистрируем ReactionMiddleware
     router.message.outer_middleware(ReactionMiddleware())
-    # Регистрируем обработчики (порядок важен: команды → кнопки → текст → медиа)
+    
+    # Регистрируем обработчики (порядок важен!)
+    # 1. Команды (/start, /help, /save и т.д.)
     commands.register(router)
+    
+    # 2. Кнопки главного меню
     buttons.register(router)
+    
+    # 3. Импорт контента (URL, фото, /save) — ДО текстовых обработчиков!
+    import_content.register(router)
+    
+    # 4. Обычные текстовые сообщения
     text.register(router)
+    
+    # 5. Медиа (остальные заглушки: голосовые, видео, документы)
     media.register(router)
+    
     return router

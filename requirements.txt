@@ -8,3 +8,12 @@ aiohttp_socks
 fastapi==0.115.2
 uvicorn==0.30.6
 pyjwt==2.9.0
+yt-dlp==2024.12.13
+faster-whisper==1.0.3
+easyocr==1.7.2
+beautifulsoup4==4.12.3
+lxml==5.3.0
+chardet==5.2.0
+readability-lxml==0.8.1
+Pillow==11.0.0
+lxml_html_clean==0.4.3

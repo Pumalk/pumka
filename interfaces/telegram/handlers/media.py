@@ -1,5 +1,6 @@
 """
 interfaces/telegram/handlers/media.py — заглушки не-текстовых сообщений.
+Фото обрабатываются в import_content.py, здесь только заглушки для остального.
 """
 import logging
 from aiogram import Router, F
@@ -14,15 +15,6 @@ async def handle_sticker(message: Message, config: Config):
     logger.info(f"Стикер от пользователя {message.from_user.id}")
     await message.answer(
         "Пока понимаю только текст 🙂 Голосовые и стикеры появятся на следующих этапах.",
-        reply_parameters=ReplyParameters(message_id=message.message_id),
-    )
-
-
-async def handle_photo(message: Message, config: Config):
-    """Обработчик фото."""
-    logger.info(f"Фото от пользователя {message.from_user.id}")
-    await message.answer(
-        "Пока понимаю только текст 🙂 Распознавание изображений появится на следующих этапах.",
         reply_parameters=ReplyParameters(message_id=message.message_id),
     )
 
@@ -66,7 +58,7 @@ async def handle_unknown(message: Message, config: Config):
 def register(router: Router) -> None:
     """Регистрирует обработчики медиа на переданном Router."""
     router.message.register(handle_sticker, F.sticker)
-    router.message.register(handle_photo, F.photo)
+    # Фото обрабатываются в import_content.py — НЕ регистрируем здесь
     router.message.register(handle_voice, F.voice | F.audio)
     router.message.register(handle_video, F.video)
     router.message.register(handle_document, F.document)

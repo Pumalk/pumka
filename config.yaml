@@ -9,7 +9,7 @@ paths:
 llm:
   provider: "ollama"
   ollama_url: "http://192.168.0.63:11434"
-  default_profile: "power"
+  default_profile: "balanced"
   profiles:
     power:
       light: "Qwen3-4B-Instruct-2507"
@@ -42,3 +42,17 @@ security:
     - "/home/pumka/Pumka/projects"
 
 max_queue_size: 200
+
+# === Настройки импорта контента (Этап 4) ===
+import:
+  whisper_model: "small"
+  whisper_compute_type: "int8"
+  transcript_chunk_chars: 12000
+  max_summary_chars: 3000
+  media_paths:
+    images: "media/images"
+    audio: "media/audio"
+    previews: "media/previews"
+    documents: "media/documents"
+    templates: "media/templates"
+  protected_terms_path: "data/memory/protected_terms.txt"

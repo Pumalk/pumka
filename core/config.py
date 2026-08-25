@@ -46,6 +46,9 @@ class LLMConfig(BaseModel):
 class PathsConfig(BaseModel):
     """Пути к важным папкам проекта."""
 
+    project: str = "/home/pumka/Pumka"
+    vault_path: str = "/home/pumka/obsidian_vault"
+    projects: str = "/home/pumka/Pumka/projects"
     data: str = "data"
     logs: str = "data/logs"
     memory: str = "data/memory"
