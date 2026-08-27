@@ -19,6 +19,7 @@ from interfaces.telegram.proxy import (
     load_proxies_from_api,
     scan_all_proxies,
     create_bot_with_proxy,
+    create_bot_with_worker,
     FAILED_PROXIES_FILE,
     failed_proxies,
     RETRY_DELAY_SECONDS,
@@ -55,10 +56,22 @@ async def run_bot_with_proxy(token: str, proxy: str, config, tool_registry) -> N
     logger.info(f"Бот готов к работе с прокси: {proxy}")
     print("✅ Бот готов к работе. Ожидание сообщений...")
     try:
-        await dp.start_polling(bot)
+        await dp.start_polling(bot, timeout=70)
     finally:
         await bot.session.close()
 
+async def test_worker_connection(bot: Bot, timeout: int = 10) -> bool:
+    """
+    Проверяет доступность Worker через getMe с таймаутом.
+    Возвращает True, если Worker отвечает корректно.
+    """
+    try:
+        me = await bot.get_me(request_timeout=timeout)
+        logger.info(f"Worker доступен: бот @{me.username} (ID: {me.id})")
+        return True
+    except Exception as e:
+        logger.warning(f"Worker недоступен: {e}")
+        return False
 
 async def main():
     """Главная функция запуска бота."""
@@ -79,6 +92,34 @@ async def main():
     logger.info(
         f"Реестр инструментов создан: {len(tool_registry.list_tools())} инструментов"
     )
+    
+        # --------------------------------------------------------------
+    # Cloudflare Worker: основной транспорт (если задан)
+    # --------------------------------------------------------------
+    if config.telegram.telegram_api_url and config.telegram.telegram_proxy_key:
+        logger.info(f"Попытка запуска через Worker: {config.telegram.telegram_api_url}")
+        print(f"🌐 Попытка запуска через Cloudflare Worker...")
+        
+        bot = create_bot_with_worker(
+            token=config.telegram.token,
+            api_url=config.telegram.telegram_api_url,
+            proxy_key=config.telegram.telegram_proxy_key,
+        )
+        
+        if await test_worker_connection(bot):
+            print("✅ Worker доступен, запуск бота через Worker")
+            dp = build_dispatcher(config, tool_registry)
+            try:
+                await dp.start_polling(bot, timeout=70)
+            finally:
+                await bot.session.close()
+            return
+        else:
+            logger.warning("Worker недоступен, переключаюсь на автоподбор прокси")
+            print("⚠️ Worker недоступен, переключаюсь на автоподбор прокси")
+            await bot.session.close()
+            # Продолжаем выполнение — падаем в блок proxy_auto или proxy
+    
     # --------------------------------------------------------------
     # Режим автоподбора прокси: проверка ВСЕХ и выбор самого быстрого
     # --------------------------------------------------------------

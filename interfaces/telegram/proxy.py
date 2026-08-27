@@ -18,7 +18,10 @@ from aiohttp.abc import AbstractResolver
 from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.aiohttp import AiohttpSession
+from aiogram.client.telegram import TelegramAPIServer
 from aiogram.enums import ParseMode
+from aiohttp import ClientSession, ClientTimeout
+from aiohttp.hdrs import USER_AGENT
 
 logger = logging.getLogger("pumka.system")
 
@@ -225,6 +228,38 @@ async def scan_all_proxies(
     logger.info(f"Сканирование прокси: {len(working)} рабочих из {len(normalized)}")
     return working
 
+class ProxyKeySession(AiohttpSession):
+    """
+    Наследник AiohttpSession, добавляющий заголовок X-Proxy-Key во все запросы.
+    Нужен для работы через Cloudflare Worker: Worker проверяет этот заголовок
+    и без него возвращает 403. Заголовок добавляется и для API-методов, и для
+    скачивания файлов (/file/bot...), что критично для отправки фото/документов.
+    
+    Увеличенный таймаут (70 сек) нужен для Telegram long-polling (getUpdates),
+    который висит до 30 секунд в ожидании новых сообщений.
+    """
+
+    def __init__(self, proxy_key: str, **kwargs):
+        # Устанавливаем таймаут сессии ДО вызова parent __init__
+        kwargs.setdefault('timeout', 70.0)
+        super().__init__(**kwargs)
+        self.proxy_key = proxy_key
+
+    async def create_session(self) -> ClientSession:
+        """Создаёт ClientSession с заголовком X-Proxy-Key по умолчанию."""
+        if self._should_reset_connector:
+            await self.close()
+        if self._session is None or self._session.closed:
+            self._session = ClientSession(
+                connector=self._connector_type(**self._connector_init),
+                headers={
+                    USER_AGENT: f"aiogram/{__version__ if '__version__' in globals() else '3.13.1'}",
+                    "X-Proxy-Key": self.proxy_key,
+                },
+                timeout=ClientTimeout(total=self.timeout),
+            )
+            self._should_reset_connector = False
+        return self._session
 
 # ============================================================================
 # Создание бота
@@ -249,3 +284,18 @@ def create_bot_with_proxy(token: str, proxy: str = "") -> Bot:
         )
     logger.info("Бот создан без прокси")
     return Bot(token=token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+
+def create_bot_with_worker(token: str, api_url: str, proxy_key: str) -> Bot:
+    """
+    Создаёт бота с использованием Cloudflare Worker как транспорта.
+    Worker проверяет заголовок X-Proxy-Key (через ProxyKeySession).
+    Без прокси — Worker сам проксирует запросы на api.telegram.org.
+    """
+    api_server = TelegramAPIServer.from_base(api_url)
+    session = ProxyKeySession(proxy_key=proxy_key, api=api_server)
+    logger.info(f"Бот создан с Worker: {api_url}")
+    return Bot(
+        token=token,
+        session=session,
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+    )

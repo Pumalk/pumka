@@ -15,7 +15,6 @@ import yaml
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, field_validator, ValidationError
 
-
 # ============================================================================
 # Pydantic-модели для валидации config.yaml
 # ============================================================================
@@ -82,10 +81,14 @@ class TelegramConfig(BaseModel):
     allowed_user_id: Optional[int] = None
     proxy: str = ""
     proxy_auto: bool = False
-    proxy_api_url: str = "https://api.proxyscrape.com/v2/?request=getproxies&protocol=socks5&timeout=10000&country=all&ssl=all&anonymity=all"
+    proxy_api_url: str = (
+        "https://api.proxyscrape.com/v2/?request=getproxies&protocol=socks5&timeout=10000&country=all&ssl=all&anonymity=all"
+    )
     proxy_use_doh: bool = True
     proxy_doh_url: str = "https://cloudflare-dns.com/dns-query"
     proxy_select_best: bool = True
+    telegram_api_url: str = ""  # НОВОЕ: URL Worker'а (пусто = выключено)
+    telegram_proxy_key: str = ""  # НОВОЕ: Секретный ключ для Worker'а
 
 
 class GUIConfig(BaseModel):
@@ -284,6 +287,12 @@ def _merge_env_to_config(
             config_data["telegram"]["proxy_select_best"] = env_vars[
                 "TELEGRAM_PROXY_SELECT_BEST"
             ].lower() in ("true", "1", "yes", "да")
+        if "TELEGRAM_API_URL" in env_vars:
+            config_data["telegram"]["telegram_api_url"] = env_vars["TELEGRAM_API_URL"]
+        if "TELEGRAM_PROXY_KEY" in env_vars:
+            config_data["telegram"]["telegram_proxy_key"] = env_vars[
+                "TELEGRAM_PROXY_KEY"
+            ]
 
     # GUI
     if "gui" not in config_data:
