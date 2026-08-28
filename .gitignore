@@ -40,3 +40,7 @@ sandbox_tech/
 core_dump.txt
 result.json
 report_context.txt
+
+# === Этап 5: данные ChromaDB и чатов ===
+data/chroma/
+data/chats/

@@ -4,7 +4,7 @@ pydantic==2.9.2
 httpx==0.28.1
 redis==5.2.1
 aiogram==3.13.1
-aiohttp_socks
+aiohttp_socks==0.10.1
 fastapi==0.115.2
 uvicorn==0.30.6
 pyjwt==2.9.0
@@ -17,3 +17,5 @@ chardet==5.2.0
 readability-lxml==0.8.1
 Pillow==11.0.0
 lxml_html_clean==0.4.3
+chromadb==0.5.23
+aiohttp==3.10.11

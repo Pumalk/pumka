@@ -101,6 +101,11 @@ class GUIConfig(BaseModel):
 class AgentsConfig(BaseModel):
     """Настройки агентов."""
 
+
+class ChatConfig(BaseModel):
+    """Настройки мультичата GUI."""
+    history_size: int = 20
+
     max_parallel_tasks: int = 3
     task_timeout_seconds: int = 300
 
@@ -114,6 +119,7 @@ class ConfigData(BaseModel):
     telegram: TelegramConfig = Field(default_factory=TelegramConfig)
     gui: GUIConfig = Field(default_factory=GUIConfig)
     agents: AgentsConfig = Field(default_factory=AgentsConfig)
+    chat: ChatConfig = Field(default_factory=ChatConfig)
 
 
 # ============================================================================
@@ -136,6 +142,7 @@ class Config:
         telegram: TelegramConfig,
         gui: GUIConfig,
         agents: AgentsConfig,
+        chat: ChatConfig,
     ):
         self.project_root = project_root
         self.llm = llm
@@ -144,6 +151,7 @@ class Config:
         self.telegram = telegram
         self.gui = gui
         self.agents = agents
+        self.chat = chat
 
         # Абсолютные пути для удобстваства
         self.data_dir = project_root / paths.data
@@ -363,6 +371,7 @@ def load_config(project_root: Optional[Path] = None) -> Config:
         telegram=validated.telegram,
         gui=validated.gui,
         agents=validated.agents,
+        chat=validated.chat,
     )
 
     return config
