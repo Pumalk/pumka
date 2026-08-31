@@ -466,13 +466,13 @@ def is_source_in_queue(source: str) -> bool:
 
     # Проверяем задачи в очереди (ожидают выполнения)
     for job in queue.get_jobs():
-        if job.meta and job.meta.get("источник") == source:
+        if job.meta and job.meta.get("source") == source:
             return True
 
     # Проверяем задачи, которые выполняются сейчас
     for worker in Worker.all(connection=redis_conn):
         current_job = worker.get_current_job()
-        if current_job and current_job.meta and current_job.meta.get("источник") == source:
+        if current_job and current_job.meta and current_job.meta.get("source") == source:
             return True
 
     return False
@@ -492,11 +492,11 @@ def enqueue_import_url(url: str, chat_id: int, message_id: int) -> str:
         job_import_url,
         url, chat_id, message_id, url,
         meta={
-            "тип": "ссылка",
-            "источник": url,
+            "kind": "url",
+            "source": url,
             "chat_id": "",
-            "номер_сообщения_в_телеграм": message_id,
-            "время_постановки": datetime.now(timezone.utc).isoformat(),
+            "telegram_message_id": message_id,
+            "enqueued_at": datetime.now(timezone.utc).isoformat(),
         },
         job_timeout=None,
     )
@@ -523,11 +523,11 @@ def enqueue_import_photo(
         job_import_photo,
         image_path_str, caption, chat_id, message_id, source,
         meta={
-            "тип": "фото",
-            "источник": source,
+            "kind": "photo",
+            "source": source,
             "chat_id": "",
-            "номер_сообщения_в_телеграм": message_id,
-            "время_постановки": datetime.now(timezone.utc).isoformat(),
+            "telegram_message_id": message_id,
+            "enqueued_at": datetime.now(timezone.utc).isoformat(),
         },
         job_timeout=None,
     )
@@ -549,11 +549,11 @@ def enqueue_import_text(text: str, chat_id: int, message_id: int) -> str:
         job_import_text,
         text, chat_id, message_id, source,
         meta={
-            "тип": "текст",
-            "источник": source,
+            "kind": "text",
+            "source": source,
             "chat_id": "",
-            "номер_сообщения_в_телеграм": message_id,
-            "время_постановки": datetime.now(timezone.utc).isoformat(),
+            "telegram_message_id": message_id,
+            "enqueued_at": datetime.now(timezone.utc).isoformat(),
         },
         job_timeout=None,
     )
@@ -584,7 +584,7 @@ def get_queue_status() -> list:
     try:
         for job in queue.get_jobs():
             meta = job.meta or {}
-            enqueued_at = meta.get("время_постановки")
+            enqueued_at = meta.get("enqueued_at")
             seconds = 0
             if enqueued_at:
                 try:
@@ -594,8 +594,8 @@ def get_queue_status() -> list:
                     pass
             result.append({
                 "status": "queued",
-                "kind": meta.get("тип", "?"),
-                "source": meta.get("источник", "?"),
+                "kind": meta.get("kind", "?"),
+                "source": meta.get("source", "?"),
                 "seconds": seconds,
             })
     except Exception as e:
@@ -608,7 +608,7 @@ def get_queue_status() -> list:
             if current_job is None:
                 continue
             meta = current_job.meta or {}
-            enqueued_at = meta.get("время_постановки")
+            enqueued_at = meta.get("enqueued_at")
             seconds = 0
             if enqueued_at:
                 try:
@@ -618,8 +618,8 @@ def get_queue_status() -> list:
                     pass
             result.append({
                 "status": "started",
-                "kind": meta.get("тип", "?"),
-                "source": meta.get("источник", "?"),
+                "kind": meta.get("kind", "?"),
+                "source": meta.get("source", "?"),
                 "seconds": seconds,
             })
     except Exception as e:
