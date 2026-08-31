@@ -251,8 +251,8 @@ def main():
                                projects=projects, host_ip=host_ip),
         report,
     )
-    write_if_missing(project / "tags.json", '{\n  "tags": {}\n}\n', report)
-    write_if_missing(project / "protected_terms.txt", PROTECTED_TERMS, report)
+    write_if_missing(project / "data" / "memory" / "tags.json", '{\n  "tags": {}\n}\n', report)
+    write_if_missing(project / "data" / "memory" / "protected_terms.txt", PROTECTED_TERMS, report)
     write_if_missing(project / "triggers.yaml", TRIGGERS_TEMPLATE, report)
 
     # --- Зависимости ------------------------------------------------------

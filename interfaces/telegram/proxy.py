@@ -11,7 +11,7 @@ import logging
 import asyncio
 import time
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, NamedTuple
 
 import aiohttp
 from aiohttp.abc import AbstractResolver
@@ -299,3 +299,103 @@ def create_bot_with_worker(token: str, api_url: str, proxy_key: str) -> Bot:
         session=session,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
+
+# ============================================================================
+# Автоматический выбор транспорта для бота и воркеров (Этап 6)
+# ============================================================================
+
+class BotTransport(NamedTuple):
+    """Результат автоматического выбора транспорта для бота."""
+    bot: Bot
+    mode: str              # "worker" | "proxy" | "direct"
+    proxy: Optional[str]   # URL прокси, если mode == "proxy", иначе None
+
+
+def record_failed_proxy(proxy: str) -> None:
+    """
+    Помечает прокси как упавший и сохраняет в файл.
+    Общая функция для bot.py и воркеров (санкционированный рефакторинг).
+    """
+    failed_proxies.add(proxy)
+    try:
+        FAILED_PROXIES_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(FAILED_PROXIES_FILE, "a") as f:
+            f.write(f"{proxy}\n")
+    except Exception as e:
+        logger.warning(f"Не удалось сохранить упавший прокси в файл: {e}")
+
+
+async def test_worker_connection(bot: Bot, timeout: int = 10) -> bool:
+    """
+    Проверяет доступность Worker через getMe с таймаутом.
+    Возвращает True, если Worker отвечает корректно.
+    """
+    try:
+        me = await bot.get_me(request_timeout=timeout)
+        logger.info(f"Worker доступен: бот @{me.username} (ID: {me.id})")
+        return True
+    except Exception as e:
+        logger.warning(f"Worker недоступен: {e}")
+        return False
+
+
+async def create_bot_auto(config) -> Optional[BotTransport]:
+    """
+    Создаёт бота, автоматически выбирая лучший транспорт (один раз):
+    1. Cloudflare Worker (если задан и доступен)
+    2. Автоподбор SOCKS5 прокси (если proxy_auto=True)
+    3. Ручной прокси из .env
+    4. Без прокси
+    
+    Используется как в основном цикле бота, так и в воркерах RQ.
+    Возвращает BotTransport или None (если proxy_auto включён, но рабочих прокси нет).
+    """
+    # 1. Worker
+    if config.telegram.telegram_api_url and config.telegram.telegram_proxy_key:
+        logger.info(f"Попытка создания бота через Worker: {config.telegram.telegram_api_url}")
+        print("🌐 Попытка запуска через Cloudflare Worker...")
+        bot = create_bot_with_worker(
+            token=config.telegram.token,
+            api_url=config.telegram.telegram_api_url,
+            proxy_key=config.telegram.telegram_proxy_key,
+        )
+        if await test_worker_connection(bot):
+            logger.info("Worker доступен, бот создан через Worker")
+            print("✅ Worker доступен")
+            return BotTransport(bot=bot, mode="worker", proxy=None)
+        await bot.session.close()
+        logger.warning("Worker недоступен, переключаюсь на прокси")
+        print("⚠️ Worker недоступен, переключаюсь на прокси")
+
+    # 2. Автоподбор прокси
+    if config.telegram.proxy_auto:
+        logger.info("Режим автоподбора прокси включён")
+        proxies = await load_proxies_from_api(
+            config.telegram.proxy_api_url,
+            use_doh=config.telegram.proxy_use_doh,
+            doh_url=config.telegram.proxy_doh_url,
+        )
+        if proxies:
+            working = await scan_all_proxies(
+                proxies, select_best=config.telegram.proxy_select_best
+            )
+            if working:
+                proxy, latency = working[0]
+                logger.info(f"Выбран лучший прокси: {proxy} ({latency * 1000:.0f} мс)")
+                bot = create_bot_with_proxy(token=config.telegram.token, proxy=proxy)
+                return BotTransport(bot=bot, mode="proxy", proxy=proxy)
+        # proxy_auto включён, но рабочих прокси нет
+        logger.error("Не найдено рабочих прокси при автоподборе")
+        return None
+
+    # 3. Ручной прокси
+    if config.telegram.proxy:
+        proxy = normalize_proxy(config.telegram.proxy)
+        logger.info(f"Используется прокси из .env: {proxy}")
+        bot = create_bot_with_proxy(token=config.telegram.token, proxy=proxy)
+        return BotTransport(bot=bot, mode="proxy", proxy=proxy)
+
+    # 4. Без прокси
+    logger.info("Бот создан без прокси")
+    bot = create_bot_with_proxy(token=config.telegram.token, proxy="")
+    return BotTransport(bot=bot, mode="direct", proxy=None)

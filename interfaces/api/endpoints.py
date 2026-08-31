@@ -1,4 +1,5 @@
 from pathlib import Path
+import uuid
 from fastapi import APIRouter, HTTPException, Request, Depends
 from core.config import load_config
 from core.health_check import run_health_check
@@ -130,8 +131,28 @@ def chat(data: dict, _=Depends(verify_jwt_token)):
         # Мультичат: сохранение сообщений
         if chat_id and storage:
             try:
-                storage.add_message(chat_id, "user", message.strip())
-                storage.add_message(chat_id, "assistant", final_response.strip())
+                ts_user = storage.add_message(chat_id, "user", message.strip())
+                ts_assistant = storage.add_message(chat_id, "assistant", final_response.strip())
+                
+                # Upsert в ChromaDB коллекцию chat_messages (закрытие отложенного Этапа 5)
+                try:
+                    from services.chroma.client import ChromaClient
+                    from core.config import load_config as _load_config_for_chroma
+                    _cfg = _load_config_for_chroma()
+                    _chroma_dir = _cfg.project_root / "data" / "chroma"
+                    _chroma = ChromaClient(_chroma_dir)
+                    if _chroma.available and _chroma.chat_messages is not None:
+                        _chroma.chat_messages.upsert(
+                            ids=[str(uuid.uuid4()), str(uuid.uuid4())],
+                            documents=[message.strip(), final_response.strip()],
+                            metadatas=[
+                                {"chat_id": chat_id, "role": "user", "timestamp": ts_user},
+                                {"chat_id": chat_id, "role": "assistant", "timestamp": ts_assistant},
+                            ]
+                        )
+                except Exception as chroma_e:
+                    logger.warning(f"Не удалось сохранить сообщения в ChromaDB (chat_id={chat_id}): {chroma_e}")
+                    
             except Exception as e:
                 logger.error(f"Ошибка сохранения сообщений в чат {chat_id}: {e}")
 

@@ -6,7 +6,7 @@ class APIClient:
         self.base_url = base_url.rstrip("/")
         self.token = token
         # Таймаут 30 секунд, чтобы GUI не зависал навечно при проблемах с ВМ
-        self.client = httpx.Client(timeout=30.0)
+        self.client = httpx.Client(timeout=120.0)
 
     def set_token(self, token: str):
         self.token = token

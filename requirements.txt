@@ -19,3 +19,4 @@ Pillow==11.0.0
 lxml_html_clean==0.4.3
 chromadb==0.5.23
 aiohttp==3.10.11
+rq==2.11.0

@@ -13,6 +13,7 @@ from core.config import Config
 from core.health_check import run_health_check
 from interfaces.telegram.keyboards import main_menu_keyboard
 from interfaces.telegram.queue_users import clear_user_queue
+from interfaces.telegram.jobs import get_queue_status, format_queue_status
 
 logger = logging.getLogger("pumka.system")
 
@@ -54,8 +55,15 @@ async def button_new_chat(
 
 async def button_queue(message: Message, config: Config):
     logger.info(f"Кнопка 'Очередь' от пользователя {message.from_user.id}")
+    try:
+        items = get_queue_status()
+        status_text = format_queue_status(items)
+    except Exception as e:
+        logger.error(f"Ошибка получения статуса очереди: {e}")
+        status_text = "⚠️ Не удалось получить статус очереди"
+
     await message.answer(
-        "Очередь задач будет доступна на Этапе 6. Пока пусто.",
+        status_text,
         reply_markup=main_menu_keyboard(),
         reply_parameters=ReplyParameters(message_id=message.message_id),
     )
